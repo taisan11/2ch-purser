@@ -1,57 +1,63 @@
 import { category } from "./types.ts";
 import { bords } from "./types.ts";
 
-export function get2chBbsMenu(text:string): Record<string, Record<string, string>> {
-    const p1 = /<BR><BR><B>(.*)<\/B><BR>/;
-    const p2 = /^<A HREF=([0-9a-zA-Z_:/\.]*\.2ch\.net\/[0-9a-zA-Z_]*)>(.*)<\/A><br>$/;
-    const p4 = /<br><br>更新日 (\d{4}\/\d{2}\/\d{2})/;
+type MenuItem = {
+    url: string;
+    title: string;
+    category: string | null;
+};
 
-    const bbsMenu: Record<string, Record<string, string>> = {};
-    let category: string | undefined;
+type MenuParseResult = {
+    items: MenuItem[];
+    lastUpdated: string | null; // 更新日を表す（フォーマット: YYYY/MM/DD または YY/MM/DD）
+};
 
-    text.split('\n').forEach(line => {
-        const m1 = p1.exec(line);
-        const m2 = p2.exec(line);
-        const m4 = p4.exec(line);
+function get2chBbsMenu(input: string): MenuParseResult {
+    let category: string | null = null;
+    const result: MenuItem[] = [];
+    let lastUpdated: string | null = null;
 
-        if (m1) {
-            category = m1[1];
-            bbsMenu[category] = {};
-        } else if (m2 && category) {
-            const boardName = m2[2];
-            const boardUrl = m2[1];
-            bbsMenu[category][boardName] = boardUrl;
+    // 行ごとに分割して解析する
+    const lines = input.split("\n");
+    for (const line of lines) {
+        let match: RegExpMatchArray | null;
+
+        // URLとタイトルの解析
+        if ((match = line.match(/^<A HREF=(https?:\/\/[^\/]+\/[^\/]+\/)>(.*)<\/A><br>/))) {
+            result.push({
+                url: match[1],
+                title: match[2],
+                category: category
+            });
         }
-        if (m4) {
-            if (!bbsMenu['last_modify_string']) {
-                bbsMenu['last_modify_string'] = {};
-            }
-            bbsMenu['last_modify_string']["a"] = m4[1];
+        // カテゴリの解析
+        else if ((match = line.match(/^<BR><BR><B>(.*)<\/B><BR>/))) {
+            category = match[1];
         }
-    });
-
-    for (const key in bbsMenu) {
-        if (Object.keys(bbsMenu[key]).length === 0) {
-            delete bbsMenu[key];
+        // 更新日の解析 (通常形式 YYYY/MM/DD)
+        else if ((match = line.match(/<br><br>更新日 (\d{4}\/\d{2}\/\d{2})/))) {
+            lastUpdated = match[1];
+        }
+        // 更新日の解析 (短縮形式 YY/MM/DD)
+        else if ((match = line.match(/<br><br><br>更新日(\d{2}\/\d{2}\/\d{2})/))) {
+            lastUpdated = match[1];
         }
     }
-    return bbsMenu;
+
+    return { items: result, lastUpdated: lastUpdated };
 }
 
-export function purseBBSmenu(arrayBuffer:ArrayBuffer): bords {
+
+
+export function purseBBSmenu(arrayBuffer: ArrayBuffer): bords {
     const decoder = new TextDecoder("shift_jis");
     const text = decoder.decode(arrayBuffer);
     const bbsMenu = get2chBbsMenu(text);
-    console.log(bbsMenu);
-    const result: bords = {description: "BBSmenu gen for BBSmenu.html", last_modify_string: bbsMenu["last_modify_string"]["a"], menu_list: [], last_modify: 0};
-    Object.entries(bbsMenu).forEach(([key, value]) => {
-        const category_content:category[] = Object.entries(value).map(([board_name, url],i) => {
-            return {url: url, category_order: i, category: 0, board_name: board_name, directory_name: "", category_name: key};
-        })
-        //categoryを追加
-        result.menu_list.push({category_number: key, category_name: key, category_total: Object.keys(value).length, category_content});
+    const result: bords = { description: "BBSmenu gen for BBSmenu.html", last_modify_string: String(bbsMenu.lastUpdated), menu_list: [], last_modify: 0 };
+    bbsMenu.items.forEach((item, i) => {
+        const category_content: category[] = [{ url: item.url, category_order: i, category: 0, board_name: item.title, directory_name: "", category_name: item.category || "" }];
+        result.menu_list.push({ category_number: String(i), category_name: item.category || "", category_total: 1, category_content });
     })
-
 
     return result;
 }
