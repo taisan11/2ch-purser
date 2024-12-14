@@ -18,3 +18,13 @@ export interface category {
     directory_name: string;
     category_name: string;
 }
+export interface threads {
+    name: string;
+    threads: thread[]
+}
+export interface thread {
+    url: string;
+    title: string;
+    res: number;
+    unixtime: number;
+}
